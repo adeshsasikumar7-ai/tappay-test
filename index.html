@@ -267,9 +267,9 @@
 
       <div class="section-head"><h3>Recent activity</h3><button class="linkbtn" onclick="show('activity')">See all</button></div>
       <div class="glass list">
-        <div class="row"><span class="rowav">R</span><span class="rowtext"><b>Ravi's Tea Stall</b><small>Today, 9:12 am</small></span><span class="amt">&minus;&#8377;25</span></div>
-        <div class="row"><span class="rowav">A</span><span class="rowtext"><b>Anita</b><small>Yesterday</small></span><span class="amt in">+&#8377;500</span></div>
-        <div class="row"><span class="rowav">C</span><span class="rowtext"><b>Corner Bakery</b><small>Yesterday</small></span><span class="amt">&minus;&#8377;140</span></div>
+        <div class="row"><span class="rowav">R</span><span class="rowtext"><b>Ravi's Tea Stall</b><small>Today, 9:12 am</small></span><span class="amt">&minus;$25</span></div>
+        <div class="row"><span class="rowav">A</span><span class="rowtext"><b>Anita</b><small>Yesterday</small></span><span class="amt in">+$500</span></div>
+        <div class="row"><span class="rowav">C</span><span class="rowtext"><b>Corner Bakery</b><small>Yesterday</small></span><span class="amt">&minus;$140</span></div>
       </div>
     </section>
 
@@ -290,11 +290,11 @@
     <section id="activity" class="screen">
       <h1 class="page-title">Activity</h1>
       <div class="glass list">
-        <div class="row"><span class="rowav">R</span><span class="rowtext"><b>Ravi's Tea Stall</b><small>Today, 9:12 am</small></span><span class="amt">&minus;&#8377;25</span></div>
-        <div class="row"><span class="rowav">A</span><span class="rowtext"><b>Anita</b><small>Yesterday, 6:40 pm</small></span><span class="amt in">+&#8377;500</span></div>
-        <div class="row"><span class="rowav">C</span><span class="rowtext"><b>Corner Bakery</b><small>Yesterday, 11:05 am</small></span><span class="amt">&minus;&#8377;140</span></div>
-        <div class="row"><span class="rowav">K</span><span class="rowtext"><b>Karthik</b><small>Mon, 2:20 pm</small></span><span class="amt">&minus;&#8377;300</span></div>
-        <div class="row"><span class="rowav">M</span><span class="rowtext"><b>Metro Card Recharge</b><small>Sun, 8:15 am</small></span><span class="amt">&minus;&#8377;200</span></div>
+        <div class="row"><span class="rowav">R</span><span class="rowtext"><b>Ravi's Tea Stall</b><small>Today, 9:12 am</small></span><span class="amt">&minus;$25</span></div>
+        <div class="row"><span class="rowav">A</span><span class="rowtext"><b>Anita</b><small>Yesterday, 6:40 pm</small></span><span class="amt in">+$500</span></div>
+        <div class="row"><span class="rowav">C</span><span class="rowtext"><b>Corner Bakery</b><small>Yesterday, 11:05 am</small></span><span class="amt">&minus;$140</span></div>
+        <div class="row"><span class="rowav">K</span><span class="rowtext"><b>Karthik</b><small>Mon, 2:20 pm</small></span><span class="amt">&minus;$300</span></div>
+        <div class="row"><span class="rowav">M</span><span class="rowtext"><b>Metro Card Recharge</b><small>Sun, 8:15 am</small></span><span class="amt">&minus;$200</span></div>
       </div>
       <p class="tiny">Sample data for the demo.</p>
     </section>
@@ -346,7 +346,7 @@
         </div>
         <label for="amount">Amount</label>
         <div class="amount-wrap">
-          <span>&#8377;</span>
+          <span>$</span>
           <input id="amount" type="number" inputmode="decimal" min="0" placeholder="0">
         </div>
         <p id="err" class="err" role="alert"></p>
@@ -581,7 +581,7 @@
   // ---------- Payment (still a pretend payment for now) ----------
   amountInput.addEventListener('input', () => {
     err.textContent = '';
-    payBtn.textContent = amountInput.value ? 'Pay \u20B9' + amountInput.value : 'Pay';
+    payBtn.textContent = amountInput.value ? 'Pay $' + amountInput.value : 'Pay';
   });
 
   function pay() {
@@ -590,7 +590,7 @@
       err.textContent = 'Enter an amount to pay.';
       return;
     }
-    document.getElementById('msg').textContent = 'Paid \u20B9' + amount + ' to ' + shopName;
+    document.getElementById('msg').textContent = 'Paid $' + amount + ' to ' + shopName;
     show('success');
   }
 

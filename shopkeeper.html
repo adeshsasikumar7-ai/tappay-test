@@ -90,7 +90,7 @@
     <div class="glass last">
       <p class="small">Last payment</p>
       <p id="lastAmount" class="big">None yet</p>
-      <p class="small">Total today: <span id="total" class="total">&#8377;0</span></p>
+      <p class="small">Total today: <span id="total" class="total">$0</span></p>
     </div>
 
     <div class="glass card">
@@ -147,19 +147,19 @@
 
     function announce(amount) {
       sum += amount;
-      document.getElementById('lastAmount').textContent = '\u20B9' + amount + ' received';
-      document.getElementById('total').textContent = '\u20B9' + sum;
+      document.getElementById('lastAmount').textContent = '$' + amount + ' received';
+      document.getElementById('total').textContent = '$' + sum;
 
       const li = document.createElement('li');
       const left = document.createElement('span');
-      left.textContent = '\u20B9' + amount;
+      left.textContent = '$' + amount;
       const right = document.createElement('span');
       right.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       li.append(left, right);
       document.getElementById('list').prepend(li);
 
-      showNote('Announced: ' + amount + ' rupees received');
-      speak(amount + ' rupees received');
+      showNote('Announced: ' + amount + ' dollars received');
+      speak(amount + ' dollars received');
     }
 
     function toggleListening() {
