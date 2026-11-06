@@ -55,7 +55,7 @@
       width: 100%; padding: 15px; margin-top: 12px; border-radius: 18px; cursor: pointer; color: var(--ink);
       font: 600 16px "Manrope", system-ui, sans-serif; background: rgba(255,255,255,0.1); border: 1px solid var(--edge);
     }
-    .last { text-align: center; padding: 28px 24px; }
+    .last { text-align: center; padding: 28px 24px; margin-bottom: 16px; }
     .last .big { font-size: 44px; font-weight: 800; margin: 6px 0; }
     .last .small { color: var(--ink-soft); font-size: 15px; margin: 0; }
     .total { color: var(--ok); font-weight: 800; }
@@ -108,7 +108,7 @@
 
     let listening = false;
     let timer = null;
-    let total = 0;
+    let sum = 0;
     const seen = new Set();
 
     const stateEl = document.getElementById('state');
@@ -116,23 +116,39 @@
     const toggleEl = document.getElementById('toggle');
     const noteEl = document.getElementById('note');
 
+    function showNote(text, bad) {
+      noteEl.textContent = text;
+      noteEl.classList.toggle('bad', !!bad);
+    }
+
+    // Shows any hidden error on the page
+    window.addEventListener('error', (e) => showNote('Error: ' + e.message, true));
+
     function speak(text) {
       if (!('speechSynthesis' in window)) {
-        noteEl.textContent = "This browser can't speak. Try Chrome.";
-        noteEl.classList.add('bad');
+        showNote("This browser can't speak. Try Chrome.", true);
         return;
       }
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'en-IN';
-      u.rate = 0.95;
-      speechSynthesis.cancel();
-      speechSynthesis.speak(u);
+      try {
+        const synth = window.speechSynthesis;
+        if (synth.speaking || synth.pending) synth.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        const voices = synth.getVoices();
+        const v = voices.find(x => x.lang === 'en-IN') || voices.find(x => x.lang && x.lang.startsWith('en'));
+        if (v) u.voice = v;
+        u.lang = (v && v.lang) || 'en-IN';
+        u.rate = 0.95;
+        u.onerror = (ev) => showNote('Voice error: ' + ev.error, true);
+        setTimeout(() => { synth.resume(); synth.speak(u); }, 80);
+      } catch (e) {
+        showNote('Voice error: ' + e.message, true);
+      }
     }
 
     function announce(amount) {
-      total += amount;
+      sum += amount;
       document.getElementById('lastAmount').textContent = '\u20B9' + amount + ' received';
-      document.getElementById('total').textContent = '\u20B9' + total;
+      document.getElementById('total').textContent = '\u20B9' + sum;
 
       const li = document.createElement('li');
       const left = document.createElement('span');
@@ -142,6 +158,7 @@
       li.append(left, right);
       document.getElementById('list').prepend(li);
 
+      showNote('Announced: ' + amount + ' rupees received');
       speak(amount + ' rupees received');
     }
 
@@ -160,10 +177,11 @@
 
     function simulate() {
       if (!listening) {
-        noteEl.textContent = 'Press "Start listening" first, then simulate a payment.';
+        showNote('Press "Start listening" first, then simulate a payment.', true);
         return;
       }
-      announce(25);
+      const amounts = [10, 25, 40, 60, 120, 250];
+      announce(amounts[Math.floor(Math.random() * amounts.length)]);
     }
 
     async function poll() {
