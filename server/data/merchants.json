@@ -13,6 +13,13 @@
       "verified": false,
       "status": "pending",
       "risk_level": "unknown"
+    },
+    {
+      "merchant_id": "shop_001",
+      "name": "Ravi's Tea Stall",
+      "verified": true,
+      "status": "active",
+      "risk_level": "low"
     }
   ]
 }

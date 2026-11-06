@@ -2,3 +2,4 @@ server/.env
 server/venv/
 __pycache__/
 *.pyc
+server/data/payments.db

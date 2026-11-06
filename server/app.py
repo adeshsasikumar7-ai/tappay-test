@@ -1,12 +1,22 @@
-
-from webhook import verify_webhook_signature
-from merchant import verify_merchant
 from flask import Flask, jsonify, request
-from paypal import create_order, get_order, capture_order
+from flask_cors import CORS
 from requests.exceptions import HTTPError, RequestException
+
 import re
 
+from paypal import create_order, get_order, capture_order
+from merchant import verify_merchant
+from webhook import verify_webhook_signature
+from database import initialize_database, save_payment, get_shop_payments
+
+
 app = Flask(__name__)
+
+CORS(app, origins=[
+    "https://adeshsasikumar7-ai.github.io"
+])
+
+initialize_database()
 
 
 @app.route("/", methods=["GET"])
@@ -28,6 +38,10 @@ def create_payment_order():
 
     amount = data.get("amount")
     currency = data.get("currency", "USD")
+    shop_id = data.get("shop_id")
+
+    if not isinstance(shop_id, str) or not re.fullmatch(r"shop_[a-zA-Z0-9_-]{1,40}", shop_id):
+        return jsonify({"error": "Valid shop ID is required"}), 400
 
     if not isinstance(amount, (str, int, float)):
         return jsonify({"error": "Valid amount is required"}), 400
@@ -42,7 +56,7 @@ def create_payment_order():
         if currency != "USD":
             return jsonify({"error": "Only USD is currently supported"}), 400
 
-        order = create_order(str(amount), currency)
+        order = create_order(str(amount), currency, shop_id)
 
         return jsonify({
             "order_id": order["id"],
@@ -72,6 +86,8 @@ def retrieve_order(order_id):
 
 
 @app.route("/api/orders/<order_id>/capture", methods=["POST"])
+
+@app.route("/api/orders/<order_id>/capture", methods=["POST"])
 def capture_payment(order_id):
     try:
         order = get_order(order_id)
@@ -83,12 +99,42 @@ def capture_payment(order_id):
             }), 409
 
         result = capture_order(order_id)
-        return jsonify(result), 200
+
+        capture = result["purchase_units"][0]["payments"]["captures"][0]
+
+        if capture["status"] != "COMPLETED":
+            return jsonify({
+                "error": "Payment capture not completed",
+                "status": capture["status"]
+            }), 409
+
+        shop_id = result["purchase_units"][0].get("custom_id")
+
+        if not shop_id:
+            return jsonify({"error": "Shop ID missing from order"}), 400
+
+        amount = capture["amount"]["value"]
+        currency = capture["amount"]["currency_code"]
+        payment_id = capture["id"]
+
+        save_payment(payment_id, shop_id, amount, currency)
+
+        return jsonify({
+            "success": True,
+            "payment_id": payment_id,
+            "shop_id": shop_id,
+            "amount": amount,
+            "currency": currency,
+            "status": "COMPLETED"
+        }), 200
 
     except (HTTPError, RequestException) as error:
         return jsonify({"error": str(error)}), 502
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
 
 
 @app.route("/api/merchants/<merchant_id>", methods=["GET"])
@@ -125,5 +171,28 @@ def paypal_webhook():
 
     except (HTTPError, RequestException) as error:
         return jsonify({"error": str(error)}), 502
+
+@app.route("/api/payments/new", methods=["GET"])
+def get_new_payments():
+    shop_id = request.args.get("shop")
+
+    if not shop_id or not re.fullmatch(
+        r"shop_[a-zA-Z0-9_-]{1,40}", shop_id
+    ):
+        return jsonify({"error": "Valid shop ID is required"}), 400
+
+    try:
+        payments = get_shop_payments(shop_id)
+
+        return jsonify({
+            "shop_id": shop_id,
+            "payments": payments
+        }), 200
+
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
+
+
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
