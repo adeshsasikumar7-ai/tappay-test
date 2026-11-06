@@ -346,8 +346,15 @@
         </div>
         <label for="amount">Amount</label>
         <div class="amount-wrap">
-          <span>&#8377;</span>
-          <input id="amount" type="number" inputmode="decimal" min="0" placeholder="0">
+         <span>$</span>
+         <input
+            id="amount"
+            type="number"
+            inputmode="decimal"
+            min="0.01"
+            step="0.01"
+            placeholder="0.00"
+>
         </div>
         <p id="err" class="err" role="alert"></p>
         <button id="payBtn" class="primary" onclick="pay()">Pay</button>
@@ -555,15 +562,56 @@
       payBtn.textContent = amountInput.value ? 'Pay \u20B9' + amountInput.value : 'Pay';
     });
 
-    function pay() {
-      const amount = amountInput.value;
-      if (!amount || Number(amount) <= 0) {
-        err.textContent = 'Enter an amount to pay.';
-        return;
-      }
-      document.getElementById('msg').textContent = 'Paid \u20B9' + amount + ' to ' + shopName;
-      show('success');
+    
+async function pay() {
+  const amount = amountInput.value;
+
+  if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+    err.textContent = 'Enter a valid amount to pay.';
+    return;
+  }
+
+  const payBtn = document.getElementById('payBtn');
+
+  try {
+    payBtn.disabled = true;
+    payBtn.textContent = 'Creating order...';
+    err.textContent = '';
+
+    const response = await fetch('http://127.0.0.1:5000/api/orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        amount: Number(amount).toFixed(2),
+        currency: 'USD'
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Could not create payment order.');
     }
+
+    if (!data.approval_url) {
+      throw new Error('PayPal approval URL was not returned.');
+    }
+
+    // Save the order ID for the next payment step.
+    sessionStorage.setItem('tappay_order_id', data.order_id);
+
+    // Redirect customer to PayPal Sandbox.
+    window.location.href = data.approval_url;
+
+  } catch (error) {
+    err.textContent = error.message;
+    payBtn.disabled = false;
+    payBtn.textContent = 'Pay';
+  }
+}
+
 
     function reset() {
       amountInput.value = '';

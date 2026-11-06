@@ -1,0 +1,18 @@
+{
+  "merchants": [
+    {
+      "merchant_id": "S2QZU2KDSWP7C",
+      "name": "TapPay Test Merchant",
+      "verified": true,
+      "status": "active",
+      "risk_level": "low"
+    },
+    {
+      "merchant_id": "TEST_MERCHANT_002",
+      "name": "Demo Store",
+      "verified": false,
+      "status": "pending",
+      "risk_level": "unknown"
+    }
+  ]
+}
