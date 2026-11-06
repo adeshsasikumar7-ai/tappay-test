@@ -2,3 +2,8 @@ server/.env
 server/venv/
 __pycache__/
 *.pyc
+.env
+backend/.env
+venv/
+backend/venv/
+__pycache__/
