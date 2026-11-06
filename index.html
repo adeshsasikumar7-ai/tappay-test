@@ -346,15 +346,8 @@
         </div>
         <label for="amount">Amount</label>
         <div class="amount-wrap">
-         <span>$</span>
-         <input
-            id="amount"
-            type="number"
-            inputmode="decimal"
-            min="0.01"
-            step="0.01"
-            placeholder="0.00"
->
+          <span>&#8377;</span>
+          <input id="amount" type="number" inputmode="decimal" min="0" placeholder="0">
         </div>
         <p id="err" class="err" role="alert"></p>
         <button id="payBtn" class="primary" onclick="pay()">Pay</button>
@@ -388,236 +381,224 @@
   <div id="toast" class="toast" role="status">Coming soon in this demo</div>
 
   <script>
-    // Shops we trust. Later, Person A's server will provide this list.
-    const SHOPS = { shop_001: "Ravi's Tea Stall" };
-    const TABS = ['home', 'contacts', 'activity', 'account'];
+  // ---------- Settings ----------
+  // When Person A's server is online, paste its link between the quotes,
+  // for example 'https://tappay-server.onrender.com'
+  // Leave it empty to use the built-in test shop below.
+  const SERVER_URL = '';
+  const API = SERVER_URL.replace(/\/+$/, '');
+  const SHOPS = { shop_001: "Ravi's Tea Stall" }; // used only when SERVER_URL is empty
 
-    const amountInput = document.getElementById('amount');
-    const payBtn = document.getElementById('payBtn');
-    const err = document.getElementById('err');
-    const statusEl = document.getElementById('status');
-    const nav = document.getElementById('nav');
-    const toastEl = document.getElementById('toast');
-    const cam = document.getElementById('cam');
-    const scanMsg = document.getElementById('scanMsg');
+  const SHOP_MESSAGES = {
+    unknown: "Unknown tag. Don't pay: this shop isn't verified.",
+    unverified: "This shop isn't verified yet. Don't pay.",
+    server: "Can't reach the server. Try again in a moment."
+  };
+  const TABS = ['home', 'contacts', 'activity', 'account'];
 
-    let shopName = "Ravi's Tea Stall";
-    let nfcAbort = null;
-    let stream = null;
-    let scanning = false;
-    let toastTimer = null;
-
-    function setStatus(text, bad) {
-      statusEl.textContent = text;
-      statusEl.classList.toggle('bad', !!bad);
-    }
-
-    function soon() {
-      toastEl.classList.add('show');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
-    }
-
-    function show(id) {
-      if (id !== 'scan') stopScan();
-      document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-      document.getElementById(id).classList.add('active');
-      err.textContent = '';
-      nav.style.display = TABS.includes(id) ? 'flex' : 'none';
-      document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.go === id));
-      if (id === 'home') setStatus('');
-      window.scrollTo(0, 0);
-    }
-
-    function openShop(id) {
-      const key = String(id).toLowerCase();
-      const name = SHOPS[key];
-      if (!name) {
-        setStatus("Unknown tag. Don't pay: this shop isn't verified.", true);
-        return false;
-      }
-      shopName = name;
-      document.getElementById('shopName').textContent = name;
-      document.getElementById('avatar').textContent = name.charAt(0);
-      show('pay');
-      return true;
-    }
-
-    /* ---------- NFC tap ---------- */
-    async function startTap() {
-      if (!('NDEFReader' in window)) {
-        setStatus("This phone or browser can't read NFC tags. Use Scan QR or the demo link.", true);
-        return;
-      }
-      try {
-        if (nfcAbort) nfcAbort.abort();
-        nfcAbort = new AbortController();
-        const reader = new NDEFReader();
-        await reader.scan({ signal: nfcAbort.signal });
-        setStatus("Hold your phone near the shop's tag.");
-        reader.onreadingerror = () => setStatus("Couldn't read that tag. Try again.", true);
-        reader.onreading = (event) => {
-          let text = '';
-          for (const record of event.message.records) {
-            if (record.recordType === 'text' || record.recordType === 'url') {
-              text = new TextDecoder(record.encoding || 'utf-8').decode(record.data);
-              break;
-            }
-          }
-          const match = text.match(/shop_[a-z0-9]+/i);
-          const id = match ? match[0].toLowerCase() : 'unknown';
-          if (SHOPS[id]) {
-            nfcAbort.abort();
-            openShop(id);
-          } else {
-            setStatus("Unknown tag. Don't pay: this shop isn't verified.", true);
-          }
-        };
-      } catch (e) {
-        setStatus('NFC could not start: ' + e.message, true);
-      }
-    }
-
-    /* ---------- QR scan (fallback) ---------- */
-    function setScanMsg(text, bad) {
-      scanMsg.textContent = text;
-      scanMsg.classList.toggle('bad', !!bad);
-    }
-
-    function openScan() {
-      show('scan');
-      startScan();
-    }
-
-    async function startScan() {
-      setScanMsg("Point your camera at the shop's QR code.");
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-        cam.srcObject = stream;
-        await cam.play();
-      } catch (e) {
-        setScanMsg('Camera not available. Use "Simulate a scan" below.', true);
-        return;
-      }
-      if (!('BarcodeDetector' in window)) {
-        setScanMsg("This browser can't read QR codes yet. Use \"Simulate a scan\" below.", true);
-        return;
-      }
-      let detector;
-      try {
-        detector = new BarcodeDetector({ formats: ['qr_code'] });
-      } catch (e) {
-        setScanMsg("QR reading isn't supported here. Use \"Simulate a scan\" below.", true);
-        return;
-      }
-      scanning = true;
-      const loop = async () => {
-        if (!scanning) return;
-        try {
-          const codes = await detector.detect(cam);
-          if (codes.length) {
-            handleQR(codes[0].rawValue);
-            return;
-          }
-        } catch (e) { /* keep trying */ }
-        requestAnimationFrame(loop);
-      };
-      loop();
-    }
-
-    function handleQR(text) {
-      const match = String(text).match(/shop_[a-z0-9]+/i);
-      const id = match ? match[0].toLowerCase() : '';
-      if (SHOPS[id]) {
-        stopScan();
-        openShop(id);
-      } else {
-        setScanMsg("Unknown QR. Don't pay: this shop isn't verified.", true);
-        setTimeout(() => { if (scanning) requestAnimationFrame(() => startLoopAgain()); }, 1200);
-      }
-    }
-
-    function startLoopAgain() {
-      // Re-start scanning after showing the warning
-      if (scanning) { stopScan(); startScan(); }
-    }
-
-    function stopScan() {
-      scanning = false;
-      if (stream) {
-        stream.getTracks().forEach(t => t.stop());
-        stream = null;
-      }
-      cam.srcObject = null;
-    }
-
-    function simulateScan() {
-      stopScan();
-      openShop('shop_001');
-    }
-
-    /* ---------- Payment ---------- */
-    amountInput.addEventListener('input', () => {
-      err.textContent = '';
-      payBtn.textContent = amountInput.value ? 'Pay \u20B9' + amountInput.value : 'Pay';
-    });
-
-    
-async function pay() {
-  const amount = amountInput.value;
-
-  if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
-    err.textContent = 'Enter a valid amount to pay.';
-    return;
-  }
-
+  const amountInput = document.getElementById('amount');
   const payBtn = document.getElementById('payBtn');
+  const err = document.getElementById('err');
+  const statusEl = document.getElementById('status');
+  const nav = document.getElementById('nav');
+  const toastEl = document.getElementById('toast');
+  const cam = document.getElementById('cam');
+  const scanMsg = document.getElementById('scanMsg');
 
-  try {
-    payBtn.disabled = true;
-    payBtn.textContent = 'Creating order...';
-    err.textContent = '';
+  let shopName = "Ravi's Tea Stall";
+  let nfcAbort = null;
+  let stream = null;
+  let scanning = false;
+  let toastTimer = null;
+  let lastQR = '';
+  let lastQRTime = 0;
 
-    const response = await fetch('http://127.0.0.1:5000/api/orders', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        amount: Number(amount).toFixed(2),
-        currency: 'USD'
-      })
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Could not create payment order.');
-    }
-
-    if (!data.approval_url) {
-      throw new Error('PayPal approval URL was not returned.');
-    }
-
-    // Save the order ID for the next payment step.
-    sessionStorage.setItem('tappay_order_id', data.order_id);
-
-    // Redirect customer to PayPal Sandbox.
-    window.location.href = data.approval_url;
-
-  } catch (error) {
-    err.textContent = error.message;
-    payBtn.disabled = false;
-    payBtn.textContent = 'Pay';
+  function setStatus(text, bad) {
+    statusEl.textContent = text;
+    statusEl.classList.toggle('bad', !!bad);
   }
-}
 
+  function soon() {
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1800);
+  }
 
-    function reset() {
-      amountInput.value = '';
-      payBtn.textContent = 'Pay';
-      show('home');
+  function show(id) {
+    if (id !== 'scan') stopScan();
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+    err.textContent = '';
+    nav.style.display = TABS.includes(id) ? 'flex' : 'none';
+    document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.go === id));
+    if (id === 'home') setStatus('');
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- Shop check ----------
+  // Asks the server if the shop is real. Without a server link, uses the test list.
+  async function lookupShop(id) {
+    if (!API) {
+      const name = SHOPS[id];
+      return name ? { ok: true, name: name } : { ok: false, reason: 'unknown' };
     }
-  </script>
+    try {
+      const res = await fetch(API + '/api/merchants/' + encodeURIComponent(id));
+      if (res.status === 404) return { ok: false, reason: 'unknown' };
+      if (!res.ok) return { ok: false, reason: 'server' };
+      const data = await res.json();
+      if (!data.found) return { ok: false, reason: 'unknown' };
+      if (!data.verified) return { ok: false, reason: 'unverified' };
+      return { ok: true, name: data.merchant.name };
+    } catch (e) {
+      return { ok: false, reason: 'server' };
+    }
+  }
+
+  async function openShop(id) {
+    setStatus('Checking shop...');
+    const result = await lookupShop(String(id).toLowerCase());
+    if (result.ok) {
+      shopName = result.name;
+      document.getElementById('shopName').textContent = result.name;
+      document.getElementById('avatar').textContent = result.name.charAt(0);
+      show('pay');
+    } else {
+      setStatus(SHOP_MESSAGES[result.reason], true);
+    }
+    return result;
+  }
+
+  // ---------- NFC tap ----------
+  async function startTap() {
+    if (!('NDEFReader' in window)) {
+      setStatus("This phone or browser can't read NFC tags. Use Scan QR or the demo link.", true);
+      return;
+    }
+    try {
+      if (nfcAbort) nfcAbort.abort();
+      nfcAbort = new AbortController();
+      const reader = new NDEFReader();
+      await reader.scan({ signal: nfcAbort.signal });
+      setStatus("Hold your phone near the shop's tag.");
+      reader.onreadingerror = () => setStatus("Couldn't read that tag. Try again.", true);
+      reader.onreading = async (event) => {
+        let text = '';
+        for (const record of event.message.records) {
+          if (record.recordType === 'text' || record.recordType === 'url') {
+            text = new TextDecoder(record.encoding || 'utf-8').decode(record.data);
+            break;
+          }
+        }
+        const match = text.match(/shop_[a-z0-9]+/i);
+        const id = match ? match[0].toLowerCase() : 'unknown';
+        const result = await openShop(id);
+        if (result.ok && nfcAbort) nfcAbort.abort();
+      };
+    } catch (e) {
+      setStatus('NFC could not start: ' + e.message, true);
+    }
+  }
+
+  // ---------- QR scan (fallback) ----------
+  function setScanMsg(text, bad) {
+    scanMsg.textContent = text;
+    scanMsg.classList.toggle('bad', !!bad);
+  }
+
+  function openScan() {
+    show('scan');
+    startScan();
+  }
+
+  async function startScan() {
+    setScanMsg("Point your camera at the shop's QR code.");
+    lastQR = '';
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+      cam.srcObject = stream;
+      await cam.play();
+    } catch (e) {
+      setScanMsg('Camera not available. Use "Simulate a scan" below.', true);
+      return;
+    }
+    if (!('BarcodeDetector' in window)) {
+      setScanMsg("This browser can't read QR codes yet. Use \"Simulate a scan\" below.", true);
+      return;
+    }
+    let detector;
+    try {
+      detector = new BarcodeDetector({ formats: ['qr_code'] });
+    } catch (e) {
+      setScanMsg("QR reading isn't supported here. Use \"Simulate a scan\" below.", true);
+      return;
+    }
+    scanning = true;
+    const loop = async () => {
+      if (!scanning) return;
+      try {
+        const codes = await detector.detect(cam);
+        const now = Date.now();
+        if (codes.length && (codes[0].rawValue !== lastQR || now - lastQRTime > 2500)) {
+          lastQR = codes[0].rawValue;
+          lastQRTime = now;
+          const done = await handleQR(lastQR);
+          if (done) return;
+        }
+      } catch (e) { /* keep trying */ }
+      requestAnimationFrame(loop);
+    };
+    loop();
+  }
+
+  async function handleQR(text) {
+    const match = String(text).match(/shop_[a-z0-9]+/i);
+    if (!match) {
+      setScanMsg(SHOP_MESSAGES.unknown, true);
+      return false;
+    }
+    setScanMsg('Checking shop...');
+    const result = await openShop(match[0].toLowerCase());
+    if (result.ok) return true;
+    setScanMsg(SHOP_MESSAGES[result.reason], true);
+    return false;
+  }
+
+  function stopScan() {
+    scanning = false;
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+    cam.srcObject = null;
+  }
+
+  function simulateScan() {
+    stopScan();
+    openShop('shop_001');
+  }
+
+  // ---------- Payment (still a pretend payment for now) ----------
+  amountInput.addEventListener('input', () => {
+    err.textContent = '';
+    payBtn.textContent = amountInput.value ? 'Pay \u20B9' + amountInput.value : 'Pay';
+  });
+
+  function pay() {
+    const amount = amountInput.value;
+    if (!amount || Number(amount) <= 0) {
+      err.textContent = 'Enter an amount to pay.';
+      return;
+    }
+    document.getElementById('msg').textContent = 'Paid \u20B9' + amount + ' to ' + shopName;
+    show('success');
+  }
+
+  function reset() {
+    amountInput.value = '';
+    payBtn.textContent = 'Pay';
+    show('home');
+  }
+</script>
 </body>
 </html>
