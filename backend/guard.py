@@ -60,10 +60,12 @@ def run_rules(shop_id, amount):
 
 
 def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
-    """Ask the AI for one friendly sentence. Returns None if anything fails."""
+    """Ask a free AI model (Groq) for one friendly sentence. None if anything fails."""
     try:
-        from anthropic import Anthropic
-        client = Anthropic(timeout=5.0, max_retries=0)  # reads ANTHROPIC_API_KEY
+        import os, requests
+        key = os.environ.get("GROQ_API_KEY")
+        if not key:
+            return None
         prompt = (
             f"Shop: {shop_name}. Usual payments: {low} to {high}. "
             f"Customer typed: {amount:g}. Safety check result: {rule_message} "
@@ -72,12 +74,15 @@ def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
             "customer. Mention the suggested amount if there is one. "
             "Output only the sentence."
         )
-        reply = client.messages.create(
-            model="claude-haiku-5-5",
-            max_tokens=80,
-            messages=[{"role": "user", "content": prompt}],
+        r = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {key}"},
+            json={"model": "llama-3.3-70b-versatile", "max_tokens": 80,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=5,
         )
-        text = reply.content[0].text.strip()
+        r.raise_for_status()
+        text = r.json()["choices"][0]["message"]["content"].strip()
         return text or None
     except Exception:
         return None   # any problem: the fixed rule sentence is used instead
