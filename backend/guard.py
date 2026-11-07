@@ -1,18 +1,16 @@
-
-import math
 import os
+import math
 import requests
 
-from flask import Blueprint, jsonify, request
-from shops import SHOPS
+from flask import Blueprint, request, jsonify
 
 guard_bp = Blueprint("guard", __name__)
 
 
 def guess_typo(amount, low, high):
-    """If removing one digit gives a normal amount, return it. Else None."""
+    """Check whether removing an extra digit gives a valid amount."""
 
-    if amount != int(amount):
+    if not amount.is_integer():
         return None
 
     digits = str(int(amount))
@@ -20,7 +18,7 @@ def guess_typo(amount, low, high):
     if len(digits) < 2:
         return None
 
-    for i in range(len(digits) - 1, -1, -1):
+    for i in range(len(digits) - 1, 0, -1):
         candidate = int(digits[:i] + digits[i + 1:])
 
         if low <= candidate <= high:
@@ -30,31 +28,45 @@ def guess_typo(amount, low, high):
 
 
 def run_rules(shop_id, amount):
-    """Python rules determine the payment safety result."""
+    """Run deterministic payment safety checks."""
 
-    if not isinstance(shop_id, str) or shop_id not in SHOPS:
+    from shops import SHOPS
+
+    shop = SHOPS.get(shop_id)
+
+    if not shop:
         return {
             "status": "warning",
-            "message": "Unknown shop. Don't pay.",
+            "message": "Unknown shop. Please verify the shop details.",
             "suggested_amount": None,
             "can_explain": False
         }
 
-    shop = SHOPS[shop_id]
+    low = shop["min"]
+    high = shop["max"]
 
-    try:
-        if isinstance(amount, bool):
-            raise ValueError
-
-        amount = float(amount)
-
-        if not math.isfinite(amount):
-            raise ValueError
-
-    except (TypeError, ValueError):
+    if isinstance(amount, bool):
         return {
             "status": "warning",
-            "message": "Please enter a valid amount.",
+            "message": "Invalid payment amount.",
+            "suggested_amount": None,
+            "can_explain": False
+        }
+
+    try:
+        amount = float(amount)
+    except (ValueError, TypeError):
+        return {
+            "status": "warning",
+            "message": "Invalid payment amount.",
+            "suggested_amount": None,
+            "can_explain": False
+        }
+
+    if not math.isfinite(amount):
+        return {
+            "status": "warning",
+            "message": "Invalid payment amount.",
             "suggested_amount": None,
             "can_explain": False
         }
@@ -62,38 +74,30 @@ def run_rules(shop_id, amount):
     if amount <= 0:
         return {
             "status": "warning",
-            "message": "The amount must be more than 0.",
+            "message": "Payment amount must be greater than zero.",
             "suggested_amount": None,
             "can_explain": False
         }
 
-    low, high = shop["min"], shop["max"]
-
     if amount > high:
-        fix = guess_typo(amount, low, high)
+        suggested = guess_typo(amount, low, high)
 
-        message = (
-            f"This is much higher than usual at this shop "
-            f"(usually {low} to {high})."
-        )
+        message = "This amount is higher than the shop's usual payment range."
 
-        if fix is not None:
-            message += f" Did you mean {fix}?"
+        if suggested is not None:
+            message += f" Did you mean {suggested}?"
 
         return {
             "status": "warning",
             "message": message,
-            "suggested_amount": fix,
+            "suggested_amount": suggested,
             "can_explain": True
         }
 
     if amount < low:
         return {
             "status": "warning",
-            "message": (
-                f"This is lower than usual at this shop "
-                f"(usually {low} to {high})."
-            ),
+            "message": "This amount is lower than the shop's usual payment range.",
             "suggested_amount": None,
             "can_explain": True
         }
@@ -127,7 +131,7 @@ def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
             "Output only the sentence."
         )
 
-                r = requests.post(
+        r = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {key}",
@@ -137,15 +141,19 @@ def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
                 "model": "openai/gpt-oss-20b",
                 "max_completion_tokens": 80,
                 "messages": [
-                    {"role": "user", "content": prompt}
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
                 ]
             },
             timeout=30
         )
-        response.raise_for_status()
+
+        r.raise_for_status()
 
         ai_text = (
-            response.json()["choices"][0]["message"]["content"].strip()
+            r.json()["choices"][0]["message"]["content"].strip()
         )
 
         return ai_text or None
@@ -155,8 +163,9 @@ def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
         return None
 
 
-@guard_bp.post("/guard/check")
+@guard_bp.route("/guard/check", methods=["POST"])
 def check():
+    """API endpoint to check a payment."""
 
     data = request.get_json(silent=True) or {}
 
@@ -165,21 +174,24 @@ def check():
 
     result = run_rules(shop_id, amount)
 
-    if result.pop("can_explain"):
+    if result["can_explain"]:
+        from shops import SHOPS
 
-        shop = SHOPS[shop_id]
+        shop = SHOPS.get(shop_id)
 
-        sentence = ai_sentence(
-            shop["name"],
-            float(amount),
-            shop["min"],
-            shop["max"],
-            result["message"],
-            result["suggested_amount"]
-        )
+        if shop:
+            ai_message = ai_sentence(
+                shop_name=shop["name"],
+                amount=float(amount),
+                low=shop["min"],
+                high=shop["max"],
+                rule_message=result["message"],
+                suggested=result["suggested_amount"]
+            )
 
-        if sentence:
-            result["message"] = sentence
+            if ai_message:
+                result["message"] = ai_message
+
+    result.pop("can_explain", None)
 
     return jsonify(result)
-
