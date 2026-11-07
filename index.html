@@ -578,12 +578,12 @@
     openShop('shop_001');
   }
 
-  // ----------   // ---------- Payment ----------
+    // ---------- Payment ----------
   // No server link: pretend payment (demo). With a server link: real PayPal sandbox payment.
   const PENDING_KEY = 'tappay_pending';
   let currentShopId = 'shop_001';
 
-  // Remember which shop was opened (the shop check above does not store its id)
+  // Remember which shop was opened
   const openShopBase = openShop;
   openShop = async function (id) {
     const result = await openShopBase(id);
@@ -601,17 +601,133 @@
     show('success');
   }
 
+  // ---------- Safety check (AI payment guard) ----------
+  const guardStyle = document.createElement('style');
+  guardStyle.textContent = `
+    .guardbox { margin: 0 0 14px; padding: 14px 16px; border-radius: 18px; background: rgba(255,179,179,0.14); border: 1px solid rgba(255,179,179,0.55); font-size: 15px; line-height: 1.45; }
+    .guardbox b { display: block; margin-bottom: 4px; color: #ffb3b3; }
+    .guardbtns { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+    .guardbtns button { padding: 13px; border-radius: 14px; cursor: pointer; font: 600 15px "Manrope", system-ui, sans-serif; color: #f5f8ff; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.32); }
+    .guardbtns button.main { background: linear-gradient(135deg, #7fe3ff, #9bb0ff); color: #06103a; border: none; font-weight: 800; }
+  `;
+  document.head.appendChild(guardStyle);
+
+  const guardBox = document.createElement('div');
+  guardBox.className = 'guardbox';
+  guardBox.style.display = 'none';
+  err.parentNode.insertBefore(guardBox, err);
+
+  function hideGuard() {
+    guardBox.style.display = 'none';
+    guardBox.textContent = '';
+  }
+
+  // Demo mode only (no server link): a built-in copy of the same idea
+  function localGuard(shopId, amount) {
+    const ranges = { shop_001: { min: 10, max: 60 } };
+    const range = ranges[shopId];
+    const n = Number(amount);
+    if (!range || !(n > 0)) return { status: 'ok' };
+    const usual = ' (usually ' + range.min + ' to ' + range.max + ').';
+    if (n > range.max) {
+      let fix = null;
+      if (Number.isInteger(n) && String(n).length > 1) {
+        const d = String(n);
+        for (let i = d.length - 1; i >= 0 && fix === null; i--) {
+          const c = Number(d.slice(0, i) + d.slice(i + 1));
+          if (c >= range.min && c <= range.max) fix = c;
+        }
+      }
+      return {
+        status: 'warning',
+        message: 'This is much higher than usual at this shop' + usual + (fix !== null ? ' Did you mean ' + fix + '?' : ''),
+        suggested_amount: fix
+      };
+    }
+    if (n < range.min) return { status: 'warning', message: 'This is lower than usual at this shop' + usual, suggested_amount: null };
+    return { status: 'ok' };
+  }
+
+  // Asks the server's guard. If the guard can't be reached, the payment continues.
+  async function checkGuard(shopId, amount) {
+    if (!API) return localGuard(shopId, amount);
+    try {
+      const res = await fetch(API + '/guard/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shop_id: shopId, amount: Number(amount) })
+      });
+      if (!res.ok) return { status: 'ok' };
+      return await res.json();
+    } catch (e) {
+      return { status: 'ok' };
+    }
+  }
+
+  function showGuard(result, amount) {
+    guardBox.textContent = '';
+    const title = document.createElement('b');
+    title.textContent = 'Check this payment';
+    const text = document.createElement('div');
+    text.textContent = result.message || 'This amount looks unusual.';
+    const btns = document.createElement('div');
+    btns.className = 'guardbtns';
+    const blocked = /^unknown shop/i.test(result.message || '');
+
+    if (result.suggested_amount) {
+      const use = document.createElement('button');
+      use.className = 'main';
+      use.textContent = 'Pay $' + result.suggested_amount + ' instead';
+      use.onclick = () => {
+        amountInput.value = result.suggested_amount;
+        hideGuard();
+        startPayment(result.suggested_amount);
+      };
+      btns.appendChild(use);
+    }
+    const edit = document.createElement('button');
+    edit.textContent = 'Change the amount';
+    edit.onclick = () => { hideGuard(); amountInput.focus(); amountInput.select(); };
+    btns.appendChild(edit);
+
+    if (!blocked) {
+      const anyway = document.createElement('button');
+      anyway.textContent = 'Pay $' + amount + ' anyway';
+      anyway.onclick = () => { hideGuard(); startPayment(amount); };
+      btns.appendChild(anyway);
+    }
+    guardBox.append(title, text, btns);
+    guardBox.style.display = 'block';
+  }
+
   amountInput.addEventListener('input', () => {
     err.textContent = '';
+    hideGuard();
     payBtn.textContent = amountInput.value ? 'Pay $' + amountInput.value : 'Pay';
   });
 
+  // Step 1: validate the amount and run the guard
   async function pay() {
     const amount = amountInput.value;
+    hideGuard();
     if (!amount || Number(amount) <= 0) {
       err.textContent = 'Enter an amount to pay.';
       return;
     }
+    payBtn.disabled = true;
+    payBtn.textContent = 'Checking payment...';
+    const result = await checkGuard(currentShopId, amount);
+    payBtn.disabled = false;
+    payBtn.textContent = 'Pay $' + amount;
+    if (result && result.status === 'warning') {
+      showGuard(result, amount);
+      return;
+    }
+    startPayment(amount);
+  }
+
+  // Step 2: do the payment
+  async function startPayment(amount) {
     if (!API) {
       setResult('Payment sent', 'Paid $' + amount + ' to ' + shopName);
       return;
@@ -657,6 +773,7 @@
 
   function reset() {
     amountInput.value = '';
+    hideGuard();
     payBtn.disabled = false;
     payBtn.textContent = 'Pay';
     document.querySelector('#success h2').textContent = 'Payment sent';
