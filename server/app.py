@@ -85,7 +85,7 @@ def retrieve_order(order_id):
         return jsonify({"error": str(error)}), 400
 
 
-@app.route("/api/orders/<order_id>/capture", methods=["POST"])
+
 
 @app.route("/api/orders/<order_id>/capture", methods=["POST"])
 def capture_payment(order_id):

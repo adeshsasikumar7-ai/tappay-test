@@ -44,31 +44,28 @@ def paypal_request(method, path, payload=None):
 
 
 
-def create_order(amount, currency="USD", shop_id=None):
+def create_order(amount, currency="USD"):
     payload = {
         "intent": "CAPTURE",
-        "payment_source": {
-            "paypal": {
-                "experience_context": {
-                    "return_url": "https://adeshsasikumar7-ai.github.io/tappay-test/",
-                    "cancel_url": "https://adeshsasikumar7-ai.github.io/tappay-test/?payment=cancelled",
-                    "user_action": "PAY_NOW",
-                    "shipping_preference": "NO_SHIPPING"
-                }
-            }
-        },
         "purchase_units": [
             {
-                "custom_id": shop_id,
                 "amount": {
                     "currency_code": currency,
                     "value": amount,
                 }
             }
         ],
+        "payment_source": {
+            "paypal": {
+                "experience_context": {
+                    "return_url": "https://adeshsasikumar7-ai.github.io/tappay-test/",
+                    "cancel_url": "https://adeshsasikumar7-ai.github.io/tappay-test/"
+                }
+            }
+        }
     }
 
-    return paypal_request("POST", "/v2/checkout/orders", payload)
+    return paypal_request("POST", "/v2/checkout/orders", payload))
 
 
 
