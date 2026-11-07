@@ -127,7 +127,7 @@ def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
             "Output only the sentence."
         )
 
-        response = requests.post(
+                r = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers={
                 "Authorization": f"Bearer {key}",
@@ -137,15 +137,11 @@ def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
                 "model": "openai/gpt-oss-20b",
                 "max_completion_tokens": 80,
                 "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
+                    {"role": "user", "content": prompt}
                 ]
             },
             timeout=30
         )
-
         response.raise_for_status()
 
         ai_text = (
