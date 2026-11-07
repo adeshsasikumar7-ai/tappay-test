@@ -184,16 +184,21 @@
       announce(amounts[Math.floor(Math.random() * amounts.length)]);
     }
 
+     // Asks the server for this shop's payments. Payments that already exist when you
+    // press "Start listening" are not announced, only new ones.
+    let firstPoll = true;
     async function poll() {
       try {
-        const r = await fetch(SERVER_URL + '/payments/new?shop=' + SHOP_ID);
+        const r = await fetch(SERVER_URL.replace(/\/+$/, '') + '/api/payments/new?shop=' + SHOP_ID);
         const data = await r.json();
         (data.payments || []).forEach(p => {
-          if (!seen.has(p.id)) {
-            seen.add(p.id);
-            announce(Number(p.amount));
-          }
+          const pid = p.id || p.payment_id;
+          if (pid === undefined || seen.has(pid)) return;
+          seen.add(pid);
+          if (!firstPoll) announce(Number(p.amount));
         });
+        firstPoll = false;
+        if (listening) stateEl.textContent = 'Listening for payments';
       } catch (e) {
         stateEl.textContent = "Can't reach the server";
       }
