@@ -65,7 +65,7 @@ def create_order(amount, currency="USD"):
         }
     }
 
-    return paypal_request("POST", "/v2/checkout/orders", payload))
+    return paypal_request("POST", "/v2/checkout/orders", payload)
 
 
 
