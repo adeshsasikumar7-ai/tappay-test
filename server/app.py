@@ -11,6 +11,8 @@ from database import initialize_database, save_payment, get_shop_payments
 
 
 app = Flask(__name__)
+from guard import guard_bp
+app.register_blueprint(guard_bp)
 
 CORS(app, origins=[
     "https://adeshsasikumar7-ai.github.io"
