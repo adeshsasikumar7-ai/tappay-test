@@ -578,27 +578,92 @@
     openShop('shop_001');
   }
 
-  // ---------- Payment (still a pretend payment for now) ----------
+  // ----------   // ---------- Payment ----------
+  // No server link: pretend payment (demo). With a server link: real PayPal sandbox payment.
+  const PENDING_KEY = 'tappay_pending';
+  let currentShopId = 'shop_001';
+
+  // Remember which shop was opened (the shop check above does not store its id)
+  const openShopBase = openShop;
+  openShop = async function (id) {
+    const result = await openShopBase(id);
+    if (result.ok) currentShopId = String(id).toLowerCase();
+    return result;
+  };
+
+  function savePending(data) { try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(data)); } catch (e) {} }
+  function loadPending() { try { return JSON.parse(sessionStorage.getItem(PENDING_KEY)); } catch (e) { return null; } }
+  function clearPending() { try { sessionStorage.removeItem(PENDING_KEY); } catch (e) {} }
+
+  function setResult(title, message) {
+    document.querySelector('#success h2').textContent = title;
+    document.getElementById('msg').textContent = message;
+    show('success');
+  }
+
   amountInput.addEventListener('input', () => {
     err.textContent = '';
     payBtn.textContent = amountInput.value ? 'Pay $' + amountInput.value : 'Pay';
   });
 
-  function pay() {
+  async function pay() {
     const amount = amountInput.value;
     if (!amount || Number(amount) <= 0) {
       err.textContent = 'Enter an amount to pay.';
       return;
     }
-    document.getElementById('msg').textContent = 'Paid $' + amount + ' to ' + shopName;
-    show('success');
+    if (!API) {
+      setResult('Payment sent', 'Paid $' + amount + ' to ' + shopName);
+      return;
+    }
+    payBtn.disabled = true;
+    payBtn.textContent = 'Starting payment...';
+    try {
+      const res = await fetch(API + '/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: String(amount), currency: 'USD', shop_id: currentShopId })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.approval_url) throw new Error(data.error || 'Could not start the payment.');
+      savePending({ shopName: shopName, amount: amount });
+      window.location.href = data.approval_url;
+    } catch (e) {
+      err.textContent = e.message === 'Failed to fetch' ? "Can't reach the server. Try again in a moment." : e.message;
+      payBtn.disabled = false;
+      payBtn.textContent = 'Pay $' + amount;
+    }
+  }
+
+  // When PayPal sends the customer back, finish the payment
+  async function handleReturn() {
+    if (!API) return;
+    const token = new URLSearchParams(window.location.search).get('token');
+    if (!token) return;
+    const pending = loadPending();
+    clearPending();
+    history.replaceState(null, '', window.location.pathname);
+    setResult('Finishing payment...', 'Please wait a moment.');
+    try {
+      const res = await fetch(API + '/api/orders/' + encodeURIComponent(token) + '/capture', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.error || 'The payment was not completed.');
+      const who = pending && pending.shopName ? pending.shopName : data.shop_id;
+      setResult('Payment sent', 'Paid $' + data.amount + ' to ' + who);
+    } catch (e) {
+      setResult('Payment not completed', e.message);
+    }
   }
 
   function reset() {
     amountInput.value = '';
+    payBtn.disabled = false;
     payBtn.textContent = 'Pay';
+    document.querySelector('#success h2').textContent = 'Payment sent';
     show('home');
   }
+
+  handleReturn();
 </script>
 </body>
 </html>
