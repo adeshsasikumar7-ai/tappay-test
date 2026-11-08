@@ -1,4 +1,5 @@
 import math
+import os
 from flask import Blueprint, jsonify, request
 from guard_shops import SHOPS
 
@@ -19,6 +20,19 @@ def guess_typo(amount, low, high):
     return None
 
 
+def parse_positive_amount(amount):
+    """Return a finite positive amount, or None for invalid input."""
+    if isinstance(amount, bool):
+        return None
+    try:
+        parsed = float(amount)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(parsed) or parsed <= 0:
+        return None
+    return parsed
+
+
 def run_rules(shop_id, amount):
     """The rules decide everything. can_explain is only used inside our code."""
     if not isinstance(shop_id, str) or shop_id not in SHOPS:
@@ -26,18 +40,9 @@ def run_rules(shop_id, amount):
                 "suggested_amount": None, "can_explain": False}
     shop = SHOPS[shop_id]
 
-    try:
-        if isinstance(amount, bool):
-            raise ValueError
-        amount = float(amount)
-        if not math.isfinite(amount):
-            raise ValueError
-    except (TypeError, ValueError):
+    amount = parse_positive_amount(amount)
+    if amount is None:
         return {"status": "warning", "message": "Please enter a valid amount.",
-                "suggested_amount": None, "can_explain": False}
-
-    if amount <= 0:
-        return {"status": "warning", "message": "The amount must be more than 0.",
                 "suggested_amount": None, "can_explain": False}
 
     low, high = shop["min"], shop["max"]
@@ -59,42 +64,74 @@ def run_rules(shop_id, amount):
             "suggested_amount": None, "can_explain": False}
 
 
-def ai_sentence(shop_name, amount, low, high, rule_message, suggested):
-    """Ask the AI for one friendly sentence. Returns None if anything fails."""
+def ai_tone(shop_name, amount, low, high, rule_message, suggested):
+    """Ask Groq for a safe tone label; callers must render trusted local text."""
     try:
-        from anthropic import Anthropic
-        client = Anthropic(timeout=5.0, max_retries=0)  # reads ANTHROPIC_API_KEY
+        from groq import Groq
+        client = Groq(timeout=5.0, max_retries=0)  # reads GROQ_API_KEY
         prompt = (
             f"Shop: {shop_name}. Usual payments: {low} to {high}. "
             f"Customer typed: {amount:g}. Safety check result: {rule_message} "
             f"Suggested amount: {suggested}.\n"
-            "Write ONE short, friendly sentence in plain English that warns the "
-            "customer. Mention the suggested amount if there is one. "
-            "Output only the sentence."
+            "Choose a tone for an existing warning. Output exactly one token: "
+            "friendly or direct. Never say the payment is safe, approved, or "
+            "okay to make. Do not create or change a suggested amount."
         )
-        reply = client.messages.create(
-            model="claude-haiku-5-5",
-            max_tokens=80,
+        reply = client.chat.completions.create(
+            model=os.getenv("GROQ_MODEL", "openai/gpt-oss-20b"),
+            max_completion_tokens=80,
+            reasoning_effort="low",
             messages=[{"role": "user", "content": prompt}],
         )
-        text = reply.content[0].text.strip()
-        return text or None
+        tone = (reply.choices[0].message.content or "").strip().lower()
+        return tone if tone in {"friendly", "direct"} else None
     except Exception:
-        return None   # any problem: the fixed rule sentence is used instead
+        return None
+
+
+def render_warning(result, shop, amount):
+    """Render only rule-backed warning text; Groq can choose a safe tone label."""
+    rule_message = result["message"]
+    if amount >= shop["min"]:
+        return rule_message
+
+    tone = ai_tone(shop["name"], amount, shop["min"], shop["max"],
+                   rule_message, result["suggested_amount"])
+    if tone != "friendly":
+        return rule_message
+
+    return (f"This amount is lower than usual at this shop (usually "
+            f"{shop['min']} to {shop['max']}).")
 
 
 @guard_bp.post("/guard/check")
 def check():
-    data = request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Request body must be a JSON object"}), 400
+
     shop_id, amount = data.get("shop_id"), data.get("amount")
+    if not isinstance(shop_id, str) or not shop_id:
+        return jsonify({"error": "shop_id must be a non-empty string"}), 400
+
+    if shop_id not in SHOPS:
+        return jsonify({
+            "status": "warning",
+            "message": "Unknown shop. Don't pay.",
+            "suggested_amount": None,
+        }), 404
+
+    if "amount" not in data or parse_positive_amount(amount) is None:
+        return jsonify({
+            "status": "warning",
+            "message": "Please enter a valid amount.",
+            "suggested_amount": None,
+        }), 400
+
     result = run_rules(shop_id, amount)
 
     if result.pop("can_explain"):
-        shop = SHOPS[shop_id]
-        sentence = ai_sentence(shop["name"], float(amount), shop["min"],
-                               shop["max"], result["message"],
-                               result["suggested_amount"])
-        if sentence:
-            result["message"] = sentence   # only the wording changes
+        result["message"] = render_warning(result, SHOPS[shop_id],
+                                           parse_positive_amount(amount))
 
     return jsonify(result)

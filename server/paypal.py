@@ -44,11 +44,12 @@ def paypal_request(method, path, payload=None):
 
 
 
-def create_order(amount, currency="USD"):
+def create_order(amount, currency, shop_id):
     payload = {
         "intent": "CAPTURE",
         "purchase_units": [
             {
+                "custom_id": shop_id,
                 "amount": {
                     "currency_code": currency,
                     "value": amount,
