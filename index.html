@@ -740,10 +740,11 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount: String(amount), currency: 'USD', shop_id: currentShopId })
       });
-      const data = await res.json();
-      if (!res.ok || !data.approval_url) throw new Error(data.error || 'Could not start the payment.');
+            const data = await res.json();
+      if (!res.ok || !data.order_id) throw new Error(data.error || 'Could not start the payment.');
+      const approvalUrl = data.approval_url || ('https://www.sandbox.paypal.com/checkoutnow?token=' + encodeURIComponent(data.order_id));
       savePending({ shopName: shopName, amount: amount });
-      window.location.href = data.approval_url;
+      window.location.href = approvalUrl;
     } catch (e) {
       err.textContent = e.message === 'Failed to fetch' ? "Can't reach the server. Try again in a moment." : e.message;
       payBtn.disabled = false;
