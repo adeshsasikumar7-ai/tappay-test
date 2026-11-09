@@ -75,7 +75,7 @@ def create_payment_order():
             "status": order["status"],
             "approval_url": next(
                 (link["href"] for link in order["links"]
-                 if link["rel"] == "approve"),
+                 if link["rel"] in ("approve", "payer-action")),
                 None
             )
         }), 201
